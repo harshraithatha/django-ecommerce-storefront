@@ -1,0 +1,52 @@
+{% extends 'base.html' %}
+
+{% block title %}Contact | {% endblock %}
+
+{% block content %}
+    <h1 class="title">Contact</h1>
+
+    <div class="columns">
+        <div class="column is-6">
+            {% if messages %}
+                {% for message in messages %}
+                    <div class="notification is-success">{{ message }}</div>
+                {% endfor %}
+            {% endif %}
+
+            <form method="post" action="{% url 'contact' %}">
+                {% csrf_token %}
+                {{ form.website }}
+
+                <div class="field">
+                    <label class="label">Name</label>
+                    <div class="control">{{ form.name }}</div>
+                    {% if form.name.errors %}<p class="help is-danger">{{ form.name.errors|striptags }}</p>{% endif %}
+                </div>
+
+                <div class="field">
+                    <label class="label">E-mail</label>
+                    <div class="control">{{ form.email }}</div>
+                    {% if form.email.errors %}<p class="help is-danger">{{ form.email.errors|striptags }}</p>{% endif %}
+                </div>
+
+                <div class="field">
+                    <label class="label">Subject</label>
+                    <div class="control">{{ form.subject }}</div>
+                    {% if form.subject.errors %}<p class="help is-danger">{{ form.subject.errors|striptags }}</p>{% endif %}
+                </div>
+
+                <div class="field">
+                    <label class="label">Message</label>
+                    <div class="control">{{ form.message }}</div>
+                    {% if form.message.errors %}<p class="help is-danger">{{ form.message.errors|striptags }}</p>{% endif %}
+                </div>
+
+                <div class="field">
+                    <div class="control">
+                        <button class="button is-success">Send message</button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+{% endblock %}

@@ -1,0 +1,209 @@
+import json
+import stripe
+import razorpay
+import requests
+
+from django.conf import settings
+from django.core.mail import EmailMultiAlternatives
+from django.http import JsonResponse, HttpResponse
+from django.shortcuts import get_object_or_404, redirect
+from django.template.loader import render_to_string
+
+from apps.cart.cart import Cart
+from apps.order.views import render_to_pdf
+
+from apps.order.utils import checkout
+
+from .models import Product
+from apps.order.models import Order
+from apps.coupon.models import Coupon
+from apps.core.models import StoreSettings
+
+from .utilities import decrement_product_quantity, send_order_confirmation
+
+def validate_payment(request):
+    data = json.loads(request.body)
+    razorpay_payment_id = data['razorpay_payment_id']
+    razorpay_order_id = data['razorpay_order_id']
+    razorpay_signature = data['razorpay_signature']
+
+    s = StoreSettings.load()
+    client = razorpay.Client(auth=(s.razorpay_publishable, s.razorpay_secret))
+
+    params_dict = {
+        'razorpay_payment_id': razorpay_payment_id,
+        'razorpay_order_id': razorpay_order_id,
+        'razorpay_signature': razorpay_signature
+    }
+
+    res = client.utility.verify_payment_signature(params_dict)
+
+    print(res)
+
+    if not res:
+        order = Order.objects.get(payment_intent=razorpay_order_id)
+        order.paid = True
+        order.save()
+
+        decrement_product_quantity(order)
+        send_order_confirmation(order)
+
+    return JsonResponse({'success': True})
+
+def create_checkout_session(request):
+    data = json.loads(request.body)
+
+    s = StoreSettings.load()
+
+    # Coupon 
+
+    coupon_code = data['coupon_code']
+    coupon_value = 0
+
+    if coupon_code != '':
+        coupon = Coupon.objects.get(code=coupon_code)
+
+        if coupon.can_use():
+            coupon_value = coupon.value
+            coupon.use()
+
+    #
+
+    cart = Cart(request)
+    items = []
+    
+    for item in cart:
+        product = item['product']
+
+        price = int(product.price * 100)
+
+        if coupon_value > 0:
+            price = int(price * (int(coupon_value) / 100))
+
+        obj = {
+            'price_data': {
+                'currency': s.currency_code.lower(),
+                'product_data': {
+                    'name': product.title
+                },
+                'unit_amount': price
+            },
+            'quantity': item['quantity']
+        }
+
+        items.append(obj)
+
+    gateway = data['gateway']
+    session = ''
+    order_id = ''
+    payment_intent = ''
+    
+    if gateway == 'stripe':
+        stripe.api_key = s.stripe_secret
+        session = stripe.checkout.Session.create(
+            payment_method_types=['card'],
+            line_items=items,
+            mode='payment',
+            success_url=request.build_absolute_uri('/cart/success/'),
+            cancel_url=request.build_absolute_uri('/cart/'),
+        )
+        payment_intent = session.payment_intent
+
+    #
+    # Create order
+
+    orderid = checkout(request, data['first_name'], data['last_name'], data['email'], data['address'], data['zipcode'], data['place'], data['phone'])
+
+    total_price = 0.00
+
+    for item in cart:
+        product = item['product']
+        total_price = total_price + (float(product.price) * int(item['quantity']))
+
+    if coupon_value > 0:
+        total_price = total_price * (coupon_value / 100)
+    
+    if gateway == 'razorpay':
+        order_amount = total_price * 100
+        order_currency = s.currency_code.upper()
+        client = razorpay.Client(auth=(s.razorpay_publishable, s.razorpay_secret))
+        data = {
+            'amount': order_amount,
+            'currency': order_currency
+        }
+
+        payment_intent = client.order.create(data=data)
+    
+    # PayPal
+
+    if gateway == 'paypal':
+        order_id = data['order_id']
+
+        # Capture the buyer-approved order through PayPal's REST API (Orders v2).
+        base = 'https://api-m.sandbox.paypal.com' if s.paypal_sandbox else 'https://api-m.paypal.com'
+        token = requests.post(
+            base + '/v1/oauth2/token',
+            data={'grant_type': 'client_credentials'},
+            auth=(s.paypal_publishable, s.paypal_secret),
+        ).json().get('access_token')
+
+        capture = requests.post(
+            base + '/v2/checkout/orders/%s/capture' % order_id,
+            headers={'Content-Type': 'application/json', 'Authorization': 'Bearer %s' % token},
+        ).json()
+
+        order = Order.objects.get(pk=orderid)
+        order.paid_amount = total_price
+        order.used_coupon = coupon_code
+
+        if capture.get('status') == 'COMPLETED':
+            order.paid = True
+            order.payment_intent = order_id
+            order.save()
+
+            decrement_product_quantity(order)
+            send_order_confirmation(order)
+        else:
+            order.paid = False
+            order.save()
+    else:
+        order = Order.objects.get(pk=orderid)
+        if gateway == 'razorpay':
+            order.payment_intent = payment_intent['id']
+        else:
+            order.payment_intent = payment_intent
+        order.paid_amount = total_price
+        order.used_coupon = coupon_code
+        order.save()
+
+    #
+
+    return JsonResponse({'session': session, 'order': payment_intent})
+
+def api_add_to_cart(request):
+    data = json.loads(request.body)
+    jsonresponse = {'success': True}
+    product_id = data['product_id']
+    update = data['update']
+    quantity = data['quantity']
+
+    cart = Cart(request)
+
+    product = get_object_or_404(Product, pk=product_id)
+
+    if not update:
+        cart.add(product=product, quantity=1, update_quantity=False)
+    else:
+        cart.add(product=product, quantity=quantity, update_quantity=True)
+    
+    return JsonResponse(jsonresponse)
+
+def api_remove_from_cart(request):
+    data = json.loads(request.body)
+    jsonresponse = {'success': True}
+    product_id = str(data['product_id'])
+
+    cart = Cart(request)
+    cart.remove(product_id)
+
+    return JsonResponse(jsonresponse)

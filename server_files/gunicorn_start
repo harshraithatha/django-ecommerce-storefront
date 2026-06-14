@@ -1,0 +1,29 @@
+#!/bin/sh
+# Gunicorn launcher. Replace the placeholder paths/user/domain for your deployment.
+
+NAME='myproject'
+DJANGODIR=/srv/myproject                     # project root (the folder with manage.py)
+SOCKFILE=/srv/myproject/run/gunicorn.sock
+USER=www-data
+GROUP=www-data
+NUM_WORKERS=3
+DJANGO_SETTINGS_MODULE=config.settings
+DJANGO_WSGI_MODULE=config.wsgi
+TIMEOUT=120
+
+cd $DJANGODIR
+source $DJANGODIR/venv/bin/activate
+export DJANGO_SETTINGS_MODULE=$DJANGO_SETTINGS_MODULE
+export PYTHONPATH=$DJANGODIR:$PYTHONPATH
+
+RUNDIR=$(dirname $SOCKFILE)
+test -d $RUNDIR || mkdir -p $RUNDIR
+
+exec $DJANGODIR/venv/bin/gunicorn ${DJANGO_WSGI_MODULE}:application \
+  --name $NAME \
+  --workers $NUM_WORKERS \
+  --timeout $TIMEOUT \
+  --user=$USER --group=$GROUP \
+  --bind=unix:$SOCKFILE \
+  --log-level=debug \
+  --log-file=-
