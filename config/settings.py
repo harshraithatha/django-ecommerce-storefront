@@ -74,7 +74,10 @@ INSTALLED_APPS = [
     'apps.newsletter',
     'apps.order',
     'apps.store',
-    'apps.userprofile'
+    'apps.userprofile',
+
+    # Must be last: deletes orphaned files when model rows are deleted or replaced.
+    'django_cleanup.apps.CleanupConfig',
 ]
 
 MIDDLEWARE = [
