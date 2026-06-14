@@ -28,8 +28,10 @@ urlpatterns = [
     path('cart/success/', success, name='success'),
     path('contact/', contact, name='contact'),
     path('about/', about, name='about'),
-    path('admin/', admin.site.urls),
+    # Must come before admin.site.urls, whose internal catch-all would otherwise
+    # swallow every path under admin/ (including this one) and 404.
     path('admin/admin_order_pdf/<int:order_id>/', admin_order_pdf, name='admin_order_pdf'),
+    path('admin/', admin.site.urls),
 
     # Auth
 

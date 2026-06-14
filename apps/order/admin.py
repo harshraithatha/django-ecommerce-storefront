@@ -14,7 +14,7 @@ order_name.short_description = 'Name'
 
 def order_pdf(obj):
     return mark_safe('<a href="{}">PDF</a>'.format(reverse('admin_order_pdf', args=[obj.id])))
-order_name.short_description = 'PDF'
+order_pdf.short_description = 'PDF'
 
 def admin_order_shipped(modeladmin, request, queryset):
     from apps.core.models import StoreSettings
@@ -36,9 +36,9 @@ class OrderItemInline(admin.TabularInline):
     raw_id_fields = ['product']
 
 class OrderAdmin(admin.ModelAdmin):
-    list_display = ['id', order_name, 'status', 'created_at', order_pdf]
+    list_display = ['order_number', order_name, 'status', 'created_at', order_pdf]
     list_filter = ['created_at', 'status']
-    search_fields = ['first_name', 'address']
+    search_fields = ['order_number', 'first_name', 'address']
     inlines = [OrderItemInline]
     actions = [admin_order_shipped]
 

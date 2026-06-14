@@ -1,83 +1,200 @@
 <!DOCTYPE html>
-
 <html>
-    <head>
-        <meta charset="utf-8">
-        <title>Order Pdf</title>
+<head>
+    <meta charset="utf-8">
+    <title>Receipt {{ order.order_number }}</title>
 
-        <style type="text/css">
-            body {
-                font-size: 14px;
-            }
+    <style type="text/css">
+        /* Bundled Unicode font so ₹ € £ ¥ etc. render instead of a black box.
+           src is resolved to a local file by pdf_link_callback. */
+        @font-face {
+            font-family: "DejaVuSans";
+            src: url("/static/fonts/DejaVuSans.ttf");
+        }
+        @font-face {
+            font-family: "DejaVuSans";
+            src: url("/static/fonts/DejaVuSans-Bold.ttf");
+            font-weight: bold;
+        }
 
-            tr.head td,
-            tr.footer td {
-                padding-top: 10px;
-                padding-bottom: 10px;
-                font-size: 18px;
-                font-weight: bold;
-                background-color: #f9f9f9;
-            }
+        @page {
+            size: a4 portrait;
+            margin: 1.5cm;
+        }
 
-            tr.footer td {
-                font-size: 14px;
-            }
+        body {
+            font-family: "DejaVuSans";
+            font-size: 10pt;
+            color: #2d2d2d;
+        }
 
-            tr.item td {
-                padding-top: 3px;
-                padding-bottom: 3px;
-                font-size: 14px;;
-            }
-        </style>
-    </head>
+        h1, h2, h3 { margin: 0; }
 
-    <body>
-        <div class="wrapper">
-            <h1>Invoice #{{ order.id }}</h1>
+        .muted { color: #888; }
+        .right { text-align: right; }
+        .center { text-align: center; }
 
-            <h2>Shipping address</h2>
+        /* Header */
+        .header td { vertical-align: top; padding-bottom: 18px; }
+        .store-name { font-size: 18pt; font-weight: bold; color: #1a1a1a; }
+        .receipt-title { font-size: 22pt; font-weight: bold; color: #1a1a1a; }
 
-            <p>
+        /* Meta + Bill-to panels */
+        .panel {
+            background-color: #f7f7f7;
+            padding: 10px 12px;
+        }
+        .panel-label {
+            font-size: 8pt;
+            color: #999;
+            text-transform: uppercase;
+            padding-bottom: 3px;
+        }
+
+        .meta-row td { padding: 2px 0; font-size: 9.5pt; }
+        .meta-key { color: #888; width: 45%; }
+
+        .badge {
+            background-color: #e8f5e9;
+            color: #2e7d32;
+            font-size: 8pt;
+            font-weight: bold;
+            padding: 2px 8px;
+        }
+        .badge.unpaid { background-color: #fdecea; color: #c62828; }
+
+        /* Items table */
+        table.items { border-collapse: collapse; width: 100%; margin-top: 6px; }
+        table.items thead td {
+            background-color: #1a1a1a;
+            color: #ffffff;
+            font-weight: bold;
+            font-size: 9pt;
+            padding: 8px 6px;
+        }
+        table.items tbody td {
+            border-bottom: 1px solid #e5e5e5;
+            padding: 8px 6px;
+            font-size: 9.5pt;
+            vertical-align: middle;
+        }
+
+        /* Totals */
+        table.totals { width: 45%; margin-left: 55%; margin-top: 10px; }
+        table.totals td { padding: 4px 6px; font-size: 10pt; }
+        table.totals tr.grand td {
+            border-top: 2px solid #1a1a1a;
+            font-size: 12pt;
+            font-weight: bold;
+            padding-top: 8px;
+        }
+
+        .footer {
+            margin-top: 30px;
+            border-top: 1px solid #e5e5e5;
+            padding-top: 12px;
+            font-size: 9pt;
+            color: #888;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Header: logo / store name + RECEIPT title -->
+    <table class="header" width="100%">
+        <tr>
+            <td>
+                {% if logo_url %}
+                    <img src="{{ logo_url }}" height="48">
+                {% else %}
+                    <span class="store-name">{{ site_name }}</span>
+                {% endif %}
+            </td>
+            <td class="right">
+                <span class="receipt-title">RECEIPT</span><br>
+                <span class="muted">{{ site_name }}</span>
+            </td>
+        </tr>
+    </table>
+
+    <!-- Order meta + Bill-to -->
+    <table width="100%">
+        <tr>
+            <td width="48%" class="panel">
+                <div class="panel-label">Order details</div>
+                <table class="meta-row" width="100%">
+                    <tr><td class="meta-key">Order number</td><td><strong>{{ order.order_number }}</strong></td></tr>
+                    <tr><td class="meta-key">Date of purchase</td><td>{{ order.created_at|date:"M j, Y, g:i a" }}</td></tr>
+                    <tr><td class="meta-key">Status</td><td>{{ order.get_status_display }}</td></tr>
+                    <tr><td class="meta-key">Payment</td><td>
+                        {% if order.paid %}<span class="badge">PAID</span>{% else %}<span class="badge unpaid">UNPAID</span>{% endif %}
+                    </td></tr>
+                </table>
+            </td>
+            <td width="4%"></td>
+            <td width="48%" class="panel">
+                <div class="panel-label">Billed to</div>
                 {{ order.first_name }} {{ order.last_name }}<br>
-                {{ order.address }}<br>
-                {{ order.zipcode }} {{ order.place }}
-            </p>
+                {% if order.address %}{{ order.address }}<br>{% endif %}
+                {% if order.zipcode or order.place %}{{ order.zipcode|default_if_none:"" }} {{ order.place|default_if_none:"" }}<br>{% endif %}
+                {% if order.email %}{{ order.email }}<br>{% endif %}
+                {% if order.phone %}{{ order.phone }}{% endif %}
+            </td>
+        </tr>
+    </table>
 
-            <h2>Products</h2>
-
-            <table cellpadding="0" cellspacing="0">
-                <tr class="head">
-                    <td></td>
-                    <td>Name</td>
-                    <td>Price</td>
-                    <td>Quantity</td>
-                    <td>Total</td>
+    <!-- Line items -->
+    <table class="items">
+        <thead>
+            <tr>
+                <td width="40"></td>
+                <td>Item</td>
+                <td class="right" width="80">Unit price</td>
+                <td class="right" width="40">Qty</td>
+                <td class="right" width="90">Amount</td>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in order.items.all %}
+                <tr>
+                    <td>
+                        {% if item.product.thumbnail %}
+                            <img src="{{ item.product.get_thumbnail }}" width="34">
+                        {% endif %}
+                    </td>
+                    <td>{{ item.get_title }}</td>
+                    <td class="right">{{ currency_symbol }}{{ item.price|floatformat:2 }}</td>
+                    <td class="right">{{ item.quantity }}</td>
+                    <td class="right">{{ currency_symbol }}{{ item.get_cost|floatformat:2 }}</td>
                 </tr>
+            {% empty %}
+                <tr><td colspan="5" class="center muted">No items on this order.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
 
-                {% for item in order.items.all %}
-                    <tr class="item">
-                        <td>
-                            {% if item.product.thumbnail.url %}
-                                <img src="{{ site_url }}{{ item.product.get_thumbnail }}" width="40">
-                            {% endif %}
-                        </td>
-                        <td>{{ item.product.title }}</td>
-                        <td>{{ currency_symbol }}{{ item.product.price }}</td>
-                        <td>{{ item.quantity }}</td>
-                        <td>{{ currency_symbol }}{{ item.price }}</td>
-                    </tr>
-                {% endfor %}
+    <!-- Totals -->
+    <table class="totals">
+        <tr>
+            <td class="muted">Subtotal</td>
+            <td class="right">{{ currency_symbol }}{{ order.get_subtotal|floatformat:2 }}</td>
+        </tr>
+        {% if order.used_coupon %}
+            <tr>
+                <td class="muted">Coupon ({{ order.used_coupon }})</td>
+                <td class="right">&minus;{{ currency_symbol }}{{ order.get_discount|floatformat:2 }}</td>
+            </tr>
+        {% endif %}
+        <tr class="grand">
+            <td>Total paid</td>
+            <td class="right">{{ currency_symbol }}{{ order.paid_amount|floatformat:2 }}</td>
+        </tr>
+    </table>
 
-                <tr class="footer">
-                    <td></td>
-                    <td colspan="3">Total</td>
-                    <td>{{ currency_symbol }}{{ order.paid_amount }}</td>
-                </tr>
-            </table>
+    <div class="footer">
+        Thank you for shopping with {{ site_name }}!<br>
+        This is a computer-generated receipt for order {{ order.order_number }}.
+    </div>
 
-            <h2>{{ site_name }}</h2>
-
-            <p>Thanks for ordering from us!</p>
-        </div>
-    </body>
+</body>
 </html>
